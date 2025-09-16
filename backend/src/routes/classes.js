@@ -250,6 +250,69 @@ router.get('/:id',
   }
 );
 
+// @route   GET /api/classes/:id/students/compact
+// @desc    Get compact list of students for a class (for teachers/admin)
+// @access  Private (Admin, Teacher - if teaching class)
+router.get('/:id/students/compact',
+  authenticate,
+  authorize(['admin', 'teacher']),
+  validationSets.mongoIdParam,
+  async (req, res) => {
+    try {
+      const classId = req.params.id;
+
+      // Verify class exists
+      const classRecord = await Class.findById(classId);
+      if (!classRecord) {
+        return res.status(404).json({
+          success: false,
+          message: 'Class not found'
+        });
+      }
+
+      // Permission check for teacher role
+      if (req.user.role === 'teacher') {
+        const teacher = await Teacher.findOne({ user: req.user.id });
+        const teaches = teacher && teacher.classes && teacher.classes.some(c => c.class.toString() === classId);
+        if (!teaches) {
+          return res.status(403).json({ success: false, message: 'Access denied' });
+        }
+      }
+
+      // Get compact student list
+      const students = await Student.find({ class: classId })
+        .select('rollNumber studentId section user')
+        .populate('user', 'firstName lastName')
+        .sort({ rollNumber: 1 });
+
+      // Map to compact shape
+      const compact = students.map(s => ({
+        id: s._id,
+        rollNumber: s.rollNumber,
+        studentId: s.studentId,
+        section: s.section,
+        name: s.user ? `${s.user.firstName} ${s.user.lastName}` : null
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: {
+          class: { id: classRecord._id, name: classRecord.name },
+          students: compact,
+          total: compact.length
+        }
+      });
+    } catch (error) {
+      console.error('Get compact students error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch students',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      });
+    }
+  }
+);
+
 // @route   PUT /api/classes/:id
 // @desc    Update class
 // @access  Private (Admin only)

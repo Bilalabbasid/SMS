@@ -1,508 +1,639 @@
 const mongoose = require('mongoose');
 
-// Fee Structure Schema
-const feeStructureSchema = new mongoose.Schema({
-  // Basic Information
-  name: {
-    type: String,
-    required: [true, 'Fee structure name is required'],
-    trim: true,
-    maxlength: [100, 'Name cannot exceed 100 characters']
-  },
-  description: {
-    type: String,
-    maxlength: [500, 'Description cannot exceed 500 characters']
-  },
-  
-  // Academic Information
-  academicYear: {
-    type: String,
-    required: [true, 'Academic year is required'],
-    match: [/^\d{4}-\d{4}$/, 'Academic year must be in format YYYY-YYYY']
-  },
-  applicableClasses: [{
-    class: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Class',
-      required: [true, 'Class is required']
-    },
-    sections: [String] // Array of section names, empty array means all sections
-  }],
-  
-  // Fee Components
-  feeComponents: [{
-    name: {
-      type: String,
-      required: [true, 'Fee component name is required'],
-      trim: true
-    },
-    type: {
-      type: String,
-      required: [true, 'Fee type is required'],
-      enum: [
-        'tuition', 'admission', 'development', 'library', 'laboratory', 
-        'sports', 'transport', 'examination', 'activity', 'miscellaneous',
-        'hostel', 'mess', 'uniform', 'books', 'stationery', 'insurance',
-        'security-deposit', 'caution-money'
-      ]
-    },
-    amount: {
-      type: Number,
-      required: [true, 'Amount is required'],
-      min: 0
-    },
-    frequency: {
-      type: String,
-      required: [true, 'Payment frequency is required'],
-      enum: ['monthly', 'quarterly', 'half-yearly', 'yearly', 'one-time']
-    },
-    dueDate: {
-      type: String, // Format: "DD" for monthly, "MM-DD" for others
-      required: [true, 'Due date is required']
-    },
-    isOptional: {
-      type: Boolean,
-      default: false
-    },
-    isRefundable: {
-      type: Boolean,
-      default: false
-    },
-    description: String
-  }],
-  
-  // Discounts and Scholarships
-  discounts: [{
-    name: {
-      type: String,
-      required: [true, 'Discount name is required']
-    },
-    type: {
-      type: String,
-      enum: ['percentage', 'fixed'],
-      required: [true, 'Discount type is required']
-    },
-    value: {
-      type: Number,
-      required: [true, 'Discount value is required'],
-      min: 0
-    },
-    applicableComponents: [String], // Names of fee components
-    criteria: {
-      type: String,
-      enum: [
-        'merit', 'sports', 'cultural', 'economically-weak', 'staff-ward',
-        'sibling', 'early-payment', 'loyalty', 'other'
-      ]
-    },
-    maxStudents: Number, // Maximum students eligible
-    validFrom: Date,
-    validUntil: Date,
-    isActive: {
-      type: Boolean,
-      default: true
-    }
-  }],
-  
-  // Payment Terms
-  paymentTerms: {
-    lateFee: {
-      type: Number,
-      default: 0,
-      min: 0
-    },
-    lateFeeType: {
-      type: String,
-      enum: ['fixed', 'percentage'],
-      default: 'fixed'
-    },
-    gracePeriod: {
-      type: Number, // Days
-      default: 0,
-      min: 0
-    },
-    installmentsAllowed: {
-      type: Boolean,
-      default: false
-    },
-    maxInstallments: {
-      type: Number,
-      default: 1,
-      min: 1,
-      max: 12
-    }
-  },
-  
-  // Total Amounts (calculated fields)
-  totalAmount: {
-    yearly: {
-      type: Number,
-      default: 0
-    },
-    monthly: {
-      type: Number,
-      default: 0
-    }
-  },
-  
-  // Status
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  
-  // Created and Updated by
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  updatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }
-}, {
-  timestamps: true
-});
-
-// Fee Transaction Schema
-const feeTransactionSchema = new mongoose.Schema({
-  // Basic Information
-  transactionId: {
-    type: String,
-    required: [true, 'Transaction ID is required'],
-    unique: true
-  },
-  receiptNumber: {
-    type: String,
-    required: [true, 'Receipt number is required'],
-    unique: true
-  },
-  
+const feeSchema = new mongoose.Schema({
   // Student Information
   student: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Student',
     required: [true, 'Student is required']
   },
-  
+  class: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Class',
+    required: [true, 'Class is required']
+  },
+
+  // Fee Details
+  type: {
+    type: String,
+    required: [true, 'Fee type is required'],
+    enum: [
+      'tuition', 'admission', 'examination', 'laboratory', 'library',
+      'sports', 'transport', 'hostel', 'uniform', 'books',
+      'activity', 'development', 'maintenance', 'security',
+      'computer', 'medical', 'insurance', 'miscellaneous', 'fine'
+    ]
+  },
+  amount: {
+    type: Number,
+    required: [true, 'Amount is required'],
+    min: [0, 'Amount cannot be negative']
+  },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Description cannot exceed 500 characters']
+  },
+
   // Academic Information
   academicYear: {
+    type: Number,
+    required: [true, 'Academic year is required'],
+    min: 2020,
+    max: 2030
+  },
+  month: {
     type: String,
-    required: [true, 'Academic year is required']
+    enum: [
+      'january', 'february', 'march', 'april', 'may', 'june',
+      'july', 'august', 'september', 'october', 'november', 'december'
+    ]
   },
-  feeStructure: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'FeeStructure',
-    required: [true, 'Fee structure is required']
+  quarter: {
+    type: String,
+    enum: ['q1', 'q2', 'q3', 'q4']
   },
-  
-  // Payment Details
-  paymentFor: {
-    month: Number, // 1-12 for monthly fees
-    quarter: Number, // 1-4 for quarterly fees
-    term: String, // For term-wise payments
-    description: String
+  semester: {
+    type: String,
+    enum: ['1st', '2nd']
   },
-  
-  // Fee Components Paid
-  componentsPaid: [{
-    componentName: {
+
+  // Fee Breakdown
+  breakdown: [{
+    itemName: {
       type: String,
-      required: [true, 'Component name is required']
+      required: true,
+      trim: true
     },
-    baseAmount: {
+    itemAmount: {
       type: Number,
-      required: [true, 'Base amount is required']
+      required: true,
+      min: 0
     },
-    discount: {
-      amount: {
-        type: Number,
-        default: 0
-      },
+    itemDescription: {
       type: String,
-      description: String
+      trim: true
     },
-    finalAmount: {
+    isTaxable: {
+      type: Boolean,
+      default: false
+    },
+    taxAmount: {
       type: Number,
-      required: [true, 'Final amount is required']
+      default: 0,
+      min: 0
+    },
+    taxPercentage: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100
     }
   }],
-  
-  // Transaction Amounts
-  totalAmount: {
-    type: Number,
-    required: [true, 'Total amount is required'],
-    min: 0
-  },
-  discountAmount: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  lateFeeAmount: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  paidAmount: {
-    type: Number,
-    required: [true, 'Paid amount is required'],
-    min: 0
-  },
-  
+
   // Payment Information
-  paymentMethod: {
-    type: String,
-    required: [true, 'Payment method is required'],
-    enum: ['cash', 'cheque', 'bank-transfer', 'online', 'upi', 'card', 'dd']
-  },
-  paymentReference: String, // Cheque number, transaction ID, etc.
-  paymentDate: {
+  dueDate: {
     type: Date,
-    required: [true, 'Payment date is required'],
-    default: Date.now
+    required: [true, 'Due date is required']
   },
-  
-  // Bank Details (for cheque/DD/transfer)
-  bankDetails: {
-    bankName: String,
-    branchName: String,
-    accountNumber: String,
-    chequeNumber: String,
-    ddNumber: String,
-    clearanceDate: Date,
-    clearanceStatus: {
-      type: String,
-      enum: ['pending', 'cleared', 'bounced'],
-      default: 'cleared'
-    }
-  },
-  
-  // Status
   status: {
     type: String,
-    enum: ['pending', 'completed', 'failed', 'refunded', 'cancelled'],
-    default: 'completed'
+    enum: ['pending', 'partial', 'paid', 'overdue', 'cancelled', 'refunded'],
+    default: 'pending'
   },
-  
-  // Collected by
-  collectedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Collected by is required']
+  amountPaid: {
+    type: Number,
+    default: 0,
+    min: 0
   },
-  
-  // Additional Information
-  remarks: String,
-  
+  paidDate: {
+    type: Date
+  },
+  remainingAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+
+  // Payment Records
+  payments: [{
+    amount: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    method: {
+      type: String,
+      required: true,
+      enum: [
+        'cash', 'cheque', 'card', 'bank_transfer', 'online',
+        'upi', 'wallet', 'netbanking', 'demand_draft'
+      ]
+    },
+    transactionId: {
+      type: String,
+      trim: true
+    },
+    chequeNumber: {
+      type: String,
+      trim: true
+    },
+    bankName: {
+      type: String,
+      trim: true
+    },
+    date: {
+      type: Date,
+      required: true,
+      default: Date.now
+    },
+    recordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    remarks: {
+      type: String,
+      trim: true,
+      maxlength: 500
+    },
+    receiptNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true
+    },
+    status: {
+      type: String,
+      enum: ['successful', 'failed', 'pending', 'cancelled'],
+      default: 'successful'
+    }
+  }],
+
+  // Discount Information
+  discount: {
+    type: {
+      type: String,
+      enum: ['percentage', 'fixed', 'scholarship', 'sibling', 'staff', 'merit', 'need_based']
+    },
+    amount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    percentage: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100
+    },
+    reason: {
+      type: String,
+      trim: true
+    },
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    approvalDate: {
+      type: Date
+    }
+  },
+
+  // Late Fee Information
+  lateFee: {
+    amount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    appliedDate: {
+      type: Date
+    },
+    waived: {
+      type: Boolean,
+      default: false
+    },
+    waivedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    waivedDate: {
+      type: Date
+    },
+    waivedReason: {
+      type: String,
+      trim: true
+    }
+  },
+
   // Refund Information
   refund: {
     amount: {
       type: Number,
-      default: 0
+      default: 0,
+      min: 0
     },
-    date: Date,
-    reason: String,
-    refundedBy: {
+    reason: {
+      type: String,
+      trim: true
+    },
+    requestDate: {
+      type: Date
+    },
+    approvedDate: {
+      type: Date
+    },
+    processedDate: {
+      type: Date
+    },
+    approvedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
-    }
-  },
-  
-  // Created and Updated by
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  updatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }
-}, {
-  timestamps: true
-});
-
-// Student Fee Status Schema
-const studentFeeStatusSchema = new mongoose.Schema({
-  student: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Student',
-    required: [true, 'Student is required']
-  },
-  academicYear: {
-    type: String,
-    required: [true, 'Academic year is required']
-  },
-  feeStructure: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'FeeStructure',
-    required: [true, 'Fee structure is required']
-  },
-  
-  // Fee Summary
-  totalYearlyFee: {
-    type: Number,
-    required: [true, 'Total yearly fee is required']
-  },
-  totalPaidAmount: {
-    type: Number,
-    default: 0
-  },
-  totalDiscountAmount: {
-    type: Number,
-    default: 0
-  },
-  totalLateFeeAmount: {
-    type: Number,
-    default: 0
-  },
-  outstandingAmount: {
-    type: Number,
-    default: 0
-  },
-  
-  // Month-wise Status (for monthly fee structures)
-  monthlyStatus: [{
-    month: {
-      type: Number,
-      required: [true, 'Month is required'],
-      min: 1,
-      max: 12
     },
-    dueAmount: {
-      type: Number,
-      required: [true, 'Due amount is required']
+    processedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
     },
-    paidAmount: {
-      type: Number,
-      default: 0
+    refundMethod: {
+      type: String,
+      enum: ['cash', 'cheque', 'bank_transfer', 'adjustment']
     },
-    discountAmount: {
-      type: Number,
-      default: 0
-    },
-    lateFeeAmount: {
-      type: Number,
-      default: 0
-    },
-    dueDate: {
-      type: Date,
-      required: [true, 'Due date is required']
-    },
-    paidDate: Date,
     status: {
       type: String,
-      enum: ['pending', 'paid', 'partial', 'overdue'],
-      default: 'pending'
+      enum: ['requested', 'approved', 'processed', 'rejected'],
+      default: 'requested'
+    }
+  },
+
+  // Installment Information
+  installment: {
+    isInstallment: {
+      type: Boolean,
+      default: false
+    },
+    installmentNumber: {
+      type: Number,
+      min: 1
+    },
+    totalInstallments: {
+      type: Number,
+      min: 1
+    },
+    parentFeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Fee'
+    }
+  },
+
+  // Receipt Information
+  receiptGenerated: {
+    type: Boolean,
+    default: false
+  },
+  receiptNumber: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true
+  },
+  receiptDate: {
+    type: Date
+  },
+
+  // Notification Information
+  notifications: {
+    remindersSent: {
+      type: Number,
+      default: 0
+    },
+    lastReminderDate: {
+      type: Date
+    },
+    overdueNoticeSent: {
+      type: Boolean,
+      default: false
+    },
+    overdueNoticeDate: {
+      type: Date
+    }
+  },
+
+  // Audit Information
+  recordedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Recorded by is required']
+  },
+  lastModifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  
+  // Additional Information
+  priority: {
+    type: String,
+    enum: ['low', 'medium', 'high', 'urgent'],
+    default: 'medium'
+  },
+  category: {
+    type: String,
+    enum: ['mandatory', 'optional', 'conditional'],
+    default: 'mandatory'
+  },
+  tags: [{
+    type: String,
+    trim: true
+  }],
+  notes: [{
+    note: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    addedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    addedDate: {
+      type: Date,
+      default: Date.now
+    },
+    isPrivate: {
+      type: Boolean,
+      default: false
     }
   }],
-  
-  // Applied Discounts
-  appliedDiscounts: [{
-    discountName: String,
-    discountType: String,
-    discountValue: Number,
-    appliedAmount: Number,
-    appliedDate: Date
-  }],
-  
-  // Last Updated
-  lastUpdated: {
-    type: Date,
-    default: Date.now
+
+  // System Fields
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  isArchived: {
+    type: Boolean,
+    default: false
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Indexes
-feeStructureSchema.index({ academicYear: 1 });
-feeStructureSchema.index({ 'applicableClasses.class': 1 });
+// Indexes for optimal query performance
+feeSchema.index({ student: 1, academicYear: 1 });
+feeSchema.index({ status: 1 });
+feeSchema.index({ type: 1 });
+feeSchema.index({ class: 1 });
+feeSchema.index({ dueDate: 1 });
+feeSchema.index({ academicYear: 1, month: 1 });
+feeSchema.index({ 'payments.receiptNumber': 1 });
+feeSchema.index({ receiptNumber: 1 });
+feeSchema.index({ createdAt: 1 });
+feeSchema.index({ 'payments.date': 1 });
 
-feeTransactionSchema.index({ student: 1 });
-feeTransactionSchema.index({ academicYear: 1 });
-feeTransactionSchema.index({ paymentDate: 1 });
-feeTransactionSchema.index({ status: 1 });
-feeTransactionSchema.index({ transactionId: 1 });
-feeTransactionSchema.index({ receiptNumber: 1 });
+// Compound indexes for complex queries
+feeSchema.index({ student: 1, status: 1, academicYear: 1 });
+feeSchema.index({ class: 1, type: 1, status: 1 });
+feeSchema.index({ dueDate: 1, status: 1 });
 
-studentFeeStatusSchema.index({ student: 1, academicYear: 1 }, { unique: true });
-studentFeeStatusSchema.index({ 'monthlyStatus.status': 1 });
+// Virtual properties
+feeSchema.virtual('totalDiscountAmount').get(function() {
+  if (!this.discount) return 0;
+  
+  if (this.discount.type === 'percentage') {
+    return (this.amount * this.discount.percentage) / 100;
+  } else if (this.discount.type === 'fixed') {
+    return this.discount.amount;
+  }
+  return this.discount.amount || 0;
+});
 
-// Fee Structure Methods
-feeStructureSchema.methods.calculateTotalAmount = function() {
-  let yearlyTotal = 0;
-  let monthlyTotal = 0;
+feeSchema.virtual('netAmount').get(function() {
+  const discount = this.totalDiscountAmount;
+  const lateFeeAmount = this.lateFee?.amount || 0;
+  return this.amount - discount + lateFeeAmount;
+});
+
+feeSchema.virtual('balanceAmount').get(function() {
+  return Math.max(0, this.netAmount - this.amountPaid);
+});
+
+feeSchema.virtual('isOverdue').get(function() {
+  if (this.status === 'paid') return false;
+  return new Date() > this.dueDate;
+});
+
+feeSchema.virtual('daysPastDue').get(function() {
+  if (!this.isOverdue) return 0;
+  return Math.floor((new Date() - this.dueDate) / (1000 * 60 * 60 * 24));
+});
+
+feeSchema.virtual('paymentPercentage').get(function() {
+  if (this.netAmount === 0) return 100;
+  return Math.round((this.amountPaid / this.netAmount) * 100);
+});
+
+feeSchema.virtual('totalTaxAmount').get(function() {
+  return this.breakdown.reduce((total, item) => total + (item.taxAmount || 0), 0);
+});
+
+feeSchema.virtual('latestPayment').get(function() {
+  if (this.payments.length === 0) return null;
+  return this.payments.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+});
+
+// Instance methods
+feeSchema.methods.calculateLateFee = function(feePerDay = 5, maxLateFee = 500) {
+  if (!this.isOverdue || this.status === 'paid') return 0;
   
-  this.feeComponents.forEach(component => {
-    switch (component.frequency) {
-      case 'yearly':
-      case 'one-time':
-        yearlyTotal += component.amount;
-        break;
-      case 'half-yearly':
-        yearlyTotal += component.amount * 2;
-        break;
-      case 'quarterly':
-        yearlyTotal += component.amount * 4;
-        break;
-      case 'monthly':
-        yearlyTotal += component.amount * 12;
-        monthlyTotal += component.amount;
-        break;
-    }
-  });
+  const daysLate = this.daysPastDue;
+  const calculatedFee = Math.min(daysLate * feePerDay, maxLateFee);
   
-  this.totalAmount.yearly = yearlyTotal;
-  this.totalAmount.monthly = monthlyTotal;
-  
-  return this.totalAmount;
+  return calculatedFee;
 };
 
-// Student Fee Status Methods
-studentFeeStatusSchema.methods.updateStatus = function() {
-  // Calculate outstanding amount
-  this.outstandingAmount = this.totalYearlyFee + this.totalLateFeeAmount 
-    - this.totalPaidAmount - this.totalDiscountAmount;
+feeSchema.methods.applyDiscount = function(discountType, value, reason, approvedBy) {
+  this.discount = {
+    type: discountType,
+    [discountType === 'percentage' ? 'percentage' : 'amount']: value,
+    reason: reason,
+    approvedBy: approvedBy,
+    approvalDate: new Date()
+  };
   
-  // Update monthly status
-  this.monthlyStatus.forEach(month => {
-    const totalDue = month.dueAmount + month.lateFeeAmount;
-    const totalPaid = month.paidAmount + month.discountAmount;
-    
-    if (totalPaid >= totalDue) {
-      month.status = 'paid';
-    } else if (totalPaid > 0) {
-      month.status = 'partial';
-    } else if (new Date() > month.dueDate) {
-      month.status = 'overdue';
-    } else {
-      month.status = 'pending';
-    }
-  });
-  
-  this.lastUpdated = new Date();
+  this.updateStatus();
   return this;
 };
 
-// Pre-save middlewares
-feeStructureSchema.pre('save', function(next) {
-  this.calculateTotalAmount();
-  next();
-});
-
-studentFeeStatusSchema.pre('save', function(next) {
+feeSchema.methods.addPayment = function(paymentData) {
+  // Generate receipt number if not provided
+  if (!paymentData.receiptNumber) {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    paymentData.receiptNumber = `RCP${timestamp}${random}`;
+  }
+  
+  this.payments.push(paymentData);
+  this.amountPaid += paymentData.amount;
+  
   this.updateStatus();
+  
+  if (this.status === 'paid') {
+    this.paidDate = new Date();
+  }
+  
+  return this;
+};
+
+feeSchema.methods.updateStatus = function() {
+  const netAmount = this.netAmount;
+  const paidAmount = this.amountPaid;
+  
+  if (paidAmount >= netAmount) {
+    this.status = 'paid';
+    this.remainingAmount = 0;
+  } else if (paidAmount > 0) {
+    this.status = 'partial';
+    this.remainingAmount = netAmount - paidAmount;
+  } else if (this.isOverdue) {
+    this.status = 'overdue';
+    this.remainingAmount = netAmount;
+  } else {
+    this.status = 'pending';
+    this.remainingAmount = netAmount;
+  }
+  
+  return this;
+};
+
+feeSchema.methods.generateReceiptNumber = function() {
+  if (this.receiptNumber) return this.receiptNumber;
+  
+  const academicYearShort = this.academicYear.toString().slice(-2);
+  const monthNumber = new Date().getMonth() + 1;
+  const timestamp = Date.now().toString().slice(-6);
+  
+  this.receiptNumber = `${academicYearShort}${monthNumber.toString().padStart(2, '0')}${timestamp}`;
+  this.receiptGenerated = true;
+  this.receiptDate = new Date();
+  
+  return this.receiptNumber;
+};
+
+feeSchema.methods.addNote = function(noteText, addedBy, isPrivate = false) {
+  this.notes.push({
+    note: noteText,
+    addedBy: addedBy,
+    isPrivate: isPrivate
+  });
+  return this;
+};
+
+feeSchema.methods.canBeRefunded = function() {
+  return this.status === 'paid' && 
+         this.amountPaid > 0 && 
+         (!this.refund || this.refund.status !== 'processed');
+};
+
+feeSchema.methods.requestRefund = function(amount, reason, requestedBy) {
+  if (!this.canBeRefunded()) {
+    throw new Error('Fee cannot be refunded');
+  }
+  
+  if (amount > this.amountPaid) {
+    throw new Error('Refund amount cannot exceed paid amount');
+  }
+  
+  this.refund = {
+    amount: amount,
+    reason: reason,
+    requestDate: new Date(),
+    status: 'requested'
+  };
+  
+  return this;
+};
+
+// Static methods
+feeSchema.statics.findOverdueFees = function(classId = null, days = 0) {
+  const query = {
+    status: { $in: ['pending', 'partial', 'overdue'] },
+    dueDate: { $lt: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
+  };
+  
+  if (classId) {
+    query.class = classId;
+  }
+  
+  return this.find(query)
+    .populate('student', 'firstName lastName rollNumber')
+    .populate('class', 'name level')
+    .sort({ dueDate: 1 });
+};
+
+feeSchema.statics.getCollectionSummary = function(filters = {}) {
+  const pipeline = [
+    { $match: filters },
+    {
+      $group: {
+        _id: null,
+        totalAmount: { $sum: '$amount' },
+        totalCollected: { $sum: '$amountPaid' },
+        totalPending: { $sum: { $subtract: ['$amount', '$amountPaid'] } },
+        totalRecords: { $sum: 1 },
+        paidCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] }
+        },
+        partialCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'partial'] }, 1, 0] }
+        },
+        pendingCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+        },
+        overdueCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'overdue'] }, 1, 0] }
+        }
+      }
+    }
+  ];
+  
+  return this.aggregate(pipeline);
+};
+
+// Pre-save middleware
+feeSchema.pre('save', function(next) {
+  // Calculate remaining amount
+  this.remainingAmount = Math.max(0, this.netAmount - this.amountPaid);
+  
+  // Update status based on payment
+  this.updateStatus();
+  
+  // Apply automatic late fee if overdue
+  if (this.isOverdue && this.status !== 'paid' && !this.lateFee.amount) {
+    const calculatedLateFee = this.calculateLateFee();
+    if (calculatedLateFee > 0) {
+      this.lateFee.amount = calculatedLateFee;
+      this.lateFee.appliedDate = new Date();
+    }
+  }
+  
+  // Validate payment amounts
+  const totalPayments = this.payments.reduce((sum, payment) => sum + payment.amount, 0);
+  if (Math.abs(totalPayments - this.amountPaid) > 0.01) {
+    this.amountPaid = totalPayments;
+  }
+  
   next();
 });
 
-// Models
-const FeeStructure = mongoose.model('FeeStructure', feeStructureSchema);
-const FeeTransaction = mongoose.model('FeeTransaction', feeTransactionSchema);
-const StudentFeeStatus = mongoose.model('StudentFeeStatus', studentFeeStatusSchema);
+// Pre-find middleware to exclude archived records by default
+feeSchema.pre(/^find/, function(next) {
+  if (!this.getQuery().isArchived) {
+    this.find({ isArchived: { $ne: true } });
+  }
+  next();
+});
 
-module.exports = {
-  FeeStructure,
-  FeeTransaction,
-  StudentFeeStatus
-};
+module.exports = mongoose.models.Fee || mongoose.model('Fee', feeSchema);

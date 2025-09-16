@@ -3,10 +3,430 @@ const Teacher = require('../models/Teacher');
 const User = require('../models/User');
 const Class = require('../models/Class');
 const Subject = require('../models/Subject');
+const Student = require('../models/Student');
+const Attendance = require('../models/Attendance');
+const Assignment = require('../models/Assignment');
+const Exam = require('../models/Exam');
 const { authenticate, authorize } = require('../middleware/auth');
 const { validationSets } = require('../middleware/validation');
 
 const router = express.Router();
+
+// @route   GET /api/teachers/me/students
+// @desc    Get all students taught by the authenticated teacher
+// @access  Private (Teacher)
+router.get('/me/students',
+  authenticate,
+  async (req, res) => {
+    try {
+      // req.user is populated by authentication middleware
+      if (!req.user || req.user.role !== 'teacher') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Find teacher profile
+      const teacher = await Teacher.findOne({ user: req.user._id })
+        .populate('assignedClasses.class', '_id')
+        .populate('classes.class', '_id');
+
+      if (!teacher) {
+        return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      }
+
+      // Get class IDs from both assignedClasses and classes fields
+      const classIds = [
+        ...(teacher.assignedClasses || []).map(ac => ac.class._id || ac.class),
+        ...(teacher.classes || []).map(c => c.class._id || c.class)
+      ].filter(Boolean);
+
+      // Remove duplicates
+      const uniqueClassIds = [...new Set(classIds.map(id => id.toString()))];
+
+      // Pagination
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 20;
+      const skip = (page - 1) * limit;
+
+      // Build query
+      const query = { class: { $in: uniqueClassIds } };
+
+      // Search functionality
+      if (req.query.search) {
+        const searchRegex = new RegExp(req.query.search, 'i');
+        query.$or = [
+          { firstName: searchRegex },
+          { lastName: searchRegex },
+          { rollNumber: searchRegex }
+        ];
+      }
+
+      // Get students
+      const students = await Student.find(query)
+        .populate('user', 'firstName lastName email phone avatar')
+        .populate('class', 'name level grade section')
+        .sort({ 'class.grade': 1, 'class.section': 1, rollNumber: 1 })
+        .skip(skip)
+        .limit(limit);
+
+      // Get total count
+      const total = await Student.countDocuments(query);
+      const totalPages = Math.ceil(total / limit);
+
+      // Format response
+      const studentsData = students.map(student => ({
+        _id: student._id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        rollNumber: student.rollNumber,
+        class: student.class,
+        user: student.user,
+        admissionDate: student.admissionDate,
+        status: student.status
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: {
+          students: studentsData,
+          pagination: {
+            currentPage: page,
+            totalPages,
+            total,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get my students error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch students',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
+// @route   GET /api/teachers/me/schedule
+// @desc    Get schedule for the authenticated teacher
+// @access  Private (Teacher)
+router.get('/me/schedule',
+  authenticate,
+  async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== 'teacher') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Find teacher profile
+      const teacher = await Teacher.findOne({ user: req.user._id })
+        .populate('assignedClasses.class', 'name level grade section room')
+        .populate('subjects', 'name code color')
+        .select('schedule assignedClasses subjects');
+
+      if (!teacher) {
+        return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      }
+
+      // Format schedule data
+      const scheduleData = {
+        teacher: {
+          subjects: teacher.subjects,
+          classes: teacher.assignedClasses || teacher.classes || []
+        },
+        schedule: teacher.schedule || {},
+        timeSlots: [
+          { _id: '1', startTime: '08:00', endTime: '08:45', period: 1 },
+          { _id: '2', startTime: '08:45', endTime: '09:30', period: 2 },
+          { _id: '3', startTime: '09:45', endTime: '10:30', period: 3 },
+          { _id: '4', startTime: '10:30', endTime: '11:15', period: 4 },
+          { _id: '5', startTime: '11:30', endTime: '12:15', period: 5 },
+          { _id: '6', startTime: '12:15', endTime: '13:00', period: 6 },
+          { _id: '7', startTime: '14:00', endTime: '14:45', period: 7 },
+          { _id: '8', startTime: '14:45', endTime: '15:30', period: 8 }
+        ]
+      };
+
+      res.status(200).json({
+        success: true,
+        data: scheduleData
+      });
+    } catch (error) {
+      console.error('Get my schedule error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch schedule',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
+// @route   GET /api/teachers/me/dashboard
+// @desc    Get teacher dashboard data
+// @access  Private (Teacher)
+router.get('/me/dashboard',
+  authenticate,
+  async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== 'teacher') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Find teacher profile
+      const teacher = await Teacher.findOne({ user: req.user._id })
+        .populate('assignedClasses.class', '_id name level')
+        .populate('subjects', '_id name');
+
+      if (!teacher) {
+        return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      }
+
+      // Get class IDs
+      const classIds = [
+        ...(teacher.assignedClasses || []).map(ac => ac.class._id || ac.class),
+        ...(teacher.classes || []).map(c => c.class._id || c.class)
+      ].filter(Boolean);
+
+      // Get subject IDs
+      const subjectIds = teacher.subjects.map(s => s._id);
+
+      // Get dashboard statistics
+      const [
+        totalStudents,
+        totalAssignments,
+        totalExams,
+        pendingGrading,
+        todayAttendance
+      ] = await Promise.all([
+        // Total students
+        Student.countDocuments({ class: { $in: classIds } }),
+        
+        // Total assignments
+        Assignment.countDocuments({ 
+          class: { $in: classIds },
+          subject: { $in: subjectIds }
+        }),
+        
+        // Total exams
+        Exam.countDocuments({ 
+          class: { $in: classIds },
+          subject: { $in: subjectIds }
+        }),
+        
+        // Pending grading (assignments due in last 7 days)
+        Assignment.countDocuments({
+          class: { $in: classIds },
+          subject: { $in: subjectIds },
+          dueDate: { 
+            $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            $lte: new Date()
+          },
+          status: 'active'
+        }),
+        
+        // Today's attendance count
+        Attendance.countDocuments({
+          class: { $in: classIds },
+          date: {
+            $gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            $lt: new Date(new Date().setHours(23, 59, 59, 999))
+          }
+        })
+      ]);
+
+      // Get upcoming classes (mock data for now)
+      const upcomingClasses = []; // This would come from schedule system
+
+      // Recent activity (mock data for now)
+      const recentActivity = []; // This would come from activity logs
+
+      const dashboardData = {
+        stats: {
+          totalClasses: classIds.length,
+          totalStudents,
+          totalSubjects: subjectIds.length,
+          totalAssignments,
+          totalExams,
+          pendingGrading,
+          todayAttendance
+        },
+        classes: teacher.assignedClasses || teacher.classes || [],
+        subjects: teacher.subjects,
+        upcomingClasses,
+        recentActivity
+      };
+
+      res.status(200).json({
+        success: true,
+        data: dashboardData
+      });
+    } catch (error) {
+      console.error('Get teacher dashboard error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch dashboard data',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
+// @route   GET /api/teachers/me/analytics
+// @desc    Get teacher analytics data
+// @access  Private (Teacher)
+router.get('/me/analytics',
+  authenticate,
+  async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== 'teacher') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Find teacher profile
+      const teacher = await Teacher.findOne({ user: req.user._id });
+      if (!teacher) {
+        return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      }
+
+      // Get class IDs
+      const classIds = [
+        ...(teacher.assignedClasses || []).map(ac => ac.class._id || ac.class),
+        ...(teacher.classes || []).map(c => c.class._id || c.class)
+      ].filter(Boolean);
+
+      // Get attendance analytics
+      const attendanceAnalytics = await Attendance.aggregate([
+        {
+          $match: {
+            class: { $in: classIds },
+            date: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
+          }
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+            totalStudents: { $sum: "$studentsPresent" },
+            totalAbsent: { $sum: "$studentsAbsent" },
+            attendanceRate: { 
+              $avg: { 
+                $divide: [
+                  "$studentsPresent", 
+                  { $add: ["$studentsPresent", "$studentsAbsent"] }
+                ]
+              }
+            }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+
+      // Get assignment analytics
+      const assignmentAnalytics = await Assignment.aggregate([
+        {
+          $match: {
+            class: { $in: classIds }
+          }
+        },
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      // Get class performance analytics
+      const classPerformance = await Student.aggregate([
+        {
+          $match: {
+            class: { $in: classIds }
+          }
+        },
+        {
+          $group: {
+            _id: "$class",
+            totalStudents: { $sum: 1 },
+            averageGrade: { $avg: "$currentGrade" }
+          }
+        },
+        {
+          $lookup: {
+            from: "classes",
+            localField: "_id",
+            foreignField: "_id",
+            as: "classInfo"
+          }
+        }
+      ]);
+
+      const analyticsData = {
+        attendanceAnalytics,
+        assignmentAnalytics,
+        classPerformance,
+        period: 'last30days'
+      };
+
+      res.status(200).json({
+        success: true,
+        data: analyticsData
+      });
+    } catch (error) {
+      console.error('Get teacher analytics error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch analytics data',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
+// @route   GET /api/teachers/me/classes
+// @desc    Get compact list of classes assigned to currently authenticated teacher
+// @access  Private (Teacher)
+router.get('/me/classes',
+  authenticate,
+  async (req, res) => {
+    try {
+      // req.user is populated by authentication middleware
+      if (!req.user || req.user.role !== 'teacher') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Find teacher profile linked to this user
+      const teacher = await Teacher.findOne({ user: req.user._id })
+        .populate({ path: 'classes.class', select: 'name level grade' })
+        .select('classes assignedClasses');
+
+      if (!teacher) {
+        return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      }
+
+      // Compose compact response
+      const compact = (teacher.assignedClasses && teacher.assignedClasses.length)
+        ? teacher.assignedClasses.map(ac => ({
+            id: ac.class._id || ac.class,
+            name: (ac.class && ac.class.name) ? ac.class.name : undefined,
+            level: (ac.class && ac.class.level) ? ac.class.level : undefined,
+            section: ac.section,
+            academicYear: ac.academicYear || null
+          }))
+        : (teacher.classes || []).map(c => ({
+            id: c.class._id || c.class,
+            name: (c.class && c.class.name) ? c.class.name : undefined,
+            level: (c.class && c.class.level) ? c.class.level : undefined,
+            section: c.section || null
+          }));
+
+      res.status(200).json({ success: true, data: compact });
+    } catch (error) {
+      console.error('Get my classes error:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch classes', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
+    }
+  }
+);
 
 // @route   GET /api/teachers
 // @desc    Get all teachers with filtering and pagination

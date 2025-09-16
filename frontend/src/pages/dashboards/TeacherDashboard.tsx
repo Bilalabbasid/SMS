@@ -203,16 +203,24 @@ const TeacherOverview = () => {
   );
 };
 
+import MyClasses from './teacher/MyClasses';
+import Students from './teacher/Students';
+import Gradebook from './teacher/Gradebook';
+import Schedule from './teacher/Schedule';
+import Messages from './teacher/Messages';
+
 const TeacherDashboard = () => {
   return (
     <Routes>
       <Route index element={<TeacherOverview />} />
-      <Route path="classes" element={<div>My Classes (Coming Soon)</div>} />
-      <Route path="students" element={<div>Students (Coming Soon)</div>} />
+      <Route path="my-classes" element={<MyClasses />} />
+      <Route path="students" element={<Students />} />
       <Route path="attendance" element={<div>Attendance (Coming Soon)</div>} />
       <Route path="assignments" element={<div>Assignments (Coming Soon)</div>} />
       <Route path="exams" element={<div>Exams (Coming Soon)</div>} />
-      <Route path="gradebook" element={<div>Gradebook (Coming Soon)</div>} />
+      <Route path="gradebook" element={<Gradebook />} />
+      <Route path="schedule" element={<Schedule />} />
+      <Route path="messages" element={<Messages />} />
     </Routes>
   );
 };

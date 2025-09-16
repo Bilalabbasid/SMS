@@ -176,6 +176,34 @@ io.on('connection', (socket) => {
       notificationId 
     });
   });
+
+  // Handle sending messages via socket
+  socket.on('message.send', async (payload) => {
+    try {
+      // payload: { token, conversationType, conversationId, text, attachments }
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.verify(payload.token, process.env.JWT_SECRET);
+      const Message = require('./models/Message');
+
+      const msg = new Message({
+        from: decoded.id,
+        conversationType: payload.conversationType,
+        conversationId: payload.conversationId,
+        text: payload.text || null,
+        attachments: payload.attachments || [],
+        meta: payload.meta || {}
+      });
+
+      await msg.save();
+      const populated = await Message.findById(msg._id).populate('from', 'firstName lastName email');
+
+      const room = `${payload.conversationType}:${payload.conversationId}`;
+      io.to(room).emit('message.new', populated);
+    } catch (err) {
+      logger.error('Socket message.send error', { error: err.message });
+      socket.emit('error', { message: 'Failed to send message' });
+    }
+  });
   
   socket.on('disconnect', (reason) => {
     logger.info('Socket disconnected', { 

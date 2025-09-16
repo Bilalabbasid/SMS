@@ -8,15 +8,18 @@ const Class = require('./Class');
 const Subject = require('./Subject');
 
 // Academic Models
+const Assignment = require('./Assignment');
 const Diary = require('./Diary');
 const { Attendance, StudentAttendanceSummary } = require('./Attendance');
 const Exam = require('./Exam');
 
 // Financial Models
-const { FeeStructure, FeeTransaction, StudentFeeStatus } = require('./Fee');
+const Fee = require('./Fee');
 
 // Library Models
-const { Book, LibraryTransaction, LibraryMember } = require('./Library');
+const Book = require('./Book');
+const BookTransaction = require('./BookTransaction');
+// const { LibraryTransaction, LibraryMember } = require('./Library');
 
 // Transport Models
 const { TransportRoute, Vehicle, StudentTransport } = require('./Transport');
@@ -33,20 +36,20 @@ module.exports = {
   Subject,
   
   // Academic Models
+  Assignment,
   Diary,
   Attendance,
   StudentAttendanceSummary,
   Exam,
   
   // Financial Models
-  FeeStructure,
-  FeeTransaction,
-  StudentFeeStatus,
+  Fee,
   
   // Library Models
   Book,
-  LibraryTransaction,
-  LibraryMember,
+  BookTransaction,
+  // LibraryTransaction,
+  // LibraryMember,
   
   // Transport Models
   TransportRoute,

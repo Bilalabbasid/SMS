@@ -44,7 +44,7 @@ const navigationItems = {
   ],
   teacher: [
     { name: 'Dashboard', href: '/teacher', icon: Home },
-    { name: 'My Classes', href: '/teacher/classes', icon: BookOpen },
+    { name: 'My Classes', href: '/teacher/my-classes', icon: BookOpen },
     { name: 'Students', href: '/teacher/students', icon: GraduationCap },
     { name: 'Attendance', href: '/teacher/attendance', icon: UserCheck },
     { name: 'Assignments', href: '/teacher/assignments', icon: ClipboardList },
